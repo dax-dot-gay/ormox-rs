@@ -74,10 +74,6 @@ impl TryInto<Bson> for QueryOperator {
     }
 }
 
-pub trait IntoQueryLanguage<T> {
-    fn convert(&self) -> OResult<T>;
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Query(HashMap<String, QueryOperator>);
 
@@ -92,26 +88,14 @@ impl TryInto<Bson> for Query {
     }
 }
 
-impl IntoQueryLanguage<bson::Document> for Query {
-    fn convert(&self) -> OResult<bson::Document> {
-        match TryInto::<Bson>::try_into(self.clone())
-            .and_then(|b: Bson| Ok(b.as_document().cloned()))
-        {
-            Ok(Some(doc)) => Ok(doc.clone()),
-            Ok(None) => Err(OrmoxError::Serialization {
-                error: String::from("Returned non-document serialization"),
-            }),
-            Err(e) => Err(OrmoxError::Serialization {
-                error: e.to_string(),
-            }),
-        }
-    }
-}
-
 impl Query {
     fn push(&mut self, operator: QueryOperator) -> &mut Self {
         self.0.insert(operator.key(), operator);
         self
+    }
+
+    pub fn new() -> Self {
+        Self(HashMap::new())
     }
 
     pub fn equals<K: AsRef<str>, V: Into<Value>>(&mut self, key: K, value: V) -> &mut Self {
@@ -198,4 +182,26 @@ impl Query {
             queries: current.clone(),
         })
     }
+
+    pub fn build(&mut self) -> Self {
+        self.clone()
+    }
 }
+
+pub trait QueryCompatible : TryInto<Query> + TryFrom<Query> + Send {
+    fn into(self) -> OResult<Query> {
+        match TryInto::<Query>::try_into(self) {
+            Ok(r) => Ok(r),
+            Err(_) => Err(OrmoxError::Compatibility {  })
+        }
+    }
+
+    fn from(query: Query) -> OResult<Self> {
+        match Self::try_from(query) {
+            Ok(r) => Ok(r),
+            Err(_) => Err(OrmoxError::Compatibility {  })
+        }
+    }
+}
+
+impl QueryCompatible for Query {}

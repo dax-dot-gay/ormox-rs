@@ -7,6 +7,12 @@ pub enum OrmoxError {
 
     #[error("Failed to serialize value: {error:?}")]
     Serialization { error: String },
+
+    #[error("Failed to insert document: {error:?}")]
+    Insert {error: String},
+
+    #[error("Compatibility error.")]
+    Compatibility {}
 }
 
 pub type OResult<T> = Result<T, OrmoxError>;
