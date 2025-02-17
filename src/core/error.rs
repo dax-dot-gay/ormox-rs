@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum OrmoxError {
     #[error("Failed to retrieve collection {name:?}: {reason:?}")]
     CollectionRetrieval { name: String, reason: String },

@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::driver::OrmoxDatabase;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Index {
     pub fields: Vec<String>,
@@ -68,4 +70,5 @@ pub trait Document: Serialize + DeserializeOwned + Clone + Debug + Sync + Send {
     fn id(&self) -> Uuid;
     fn collection_name(&self) -> String;
     fn indexes(&self) -> Vec<Index>;
+    fn database(&self) -> impl OrmoxDatabase;
 }

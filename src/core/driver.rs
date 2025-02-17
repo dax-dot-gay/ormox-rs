@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
@@ -63,7 +65,7 @@ impl Find {
 }
 
 #[async_trait]
-pub trait OrmoxCollection<T: Document> {
+pub trait OrmoxCollection<T: Document>: Send + Sync + Clone {
     // Identification/inspection functions
 
     /// What field key is used to store object IDs
@@ -114,11 +116,15 @@ pub trait OrmoxCollection<T: Document> {
 }
 
 #[async_trait]
-pub trait OrmoxDatabase {
+pub trait OrmoxDatabase: Send + Sync + Clone {
     async fn collection<T: Document>(
         &self,
         name: impl AsRef<str>,
-    ) -> OResult<impl OrmoxCollection<T>>;
+    ) -> OResult<Arc<impl OrmoxCollection<T>>>;
 
     async fn collections(&self) -> Vec<String>;
+}
+
+pub trait OrmoxDriver {
+    type Database: OrmoxDatabase;
 }
