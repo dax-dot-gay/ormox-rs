@@ -192,14 +192,14 @@ pub trait QueryCompatible : TryInto<Query> + TryFrom<Query> + Send {
     fn into(self) -> OResult<Query> {
         match TryInto::<Query>::try_into(self) {
             Ok(r) => Ok(r),
-            Err(_) => Err(OrmoxError::Compatibility {  })
+            Err(_) => Err(OrmoxError::Compatibility )
         }
     }
 
     fn from(query: Query) -> OResult<Self> {
         match Self::try_from(query) {
             Ok(r) => Ok(r),
-            Err(_) => Err(OrmoxError::Compatibility {  })
+            Err(_) => Err(OrmoxError::Compatibility )
         }
     }
 }
