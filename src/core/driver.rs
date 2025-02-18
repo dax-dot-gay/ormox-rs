@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{document::Document, error::{OResult, OrmoxError}, query::{Query, QueryCompatible}};
+use super::{error::OResult, query::Query};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum OperationCount {
@@ -65,66 +63,30 @@ impl Find {
 }
 
 #[async_trait]
-pub trait OrmoxCollection<T: Document>: Send + Sync + Clone {
-    // Identification/inspection functions
+pub trait DatabaseDriver {
+    // Metadata functions
+    /// Name of this driver (ie "mongodb")
+    fn driver_name(&self) -> String;
 
-    /// What field key is used to store object IDs
+    /// Field that the database stores object IDs in (ie "_id")
     fn id_field(&self) -> String;
 
-    /// The name of this collection
-    fn name(&self) -> String;
-
     // Operation functions
-    async fn insert(&self, documents: Vec<&T>) -> OResult<Vec<Uuid>>;
-    async fn update(&self, query: impl QueryCompatible, update: impl Serialize + Send, count: OperationCount, upsert: bool) -> OResult<()>;
-    async fn delete(&self, query: impl QueryCompatible, count: OperationCount) -> OResult<()>;
-    async fn find(&self, query: impl QueryCompatible, options: Find) -> OResult<Vec<T>>;
-    async fn all(&self, options: Find) -> OResult<Vec<T>>;
+    /// Function to return all collection names
+    async fn collections(&self) -> OResult<Vec<String>>;
 
-    // Default implementations
-    async fn insert_one(&self, document: &T) -> OResult<Uuid> {
-        match self.insert(vec![document]).await.and_then(|v| Ok(v.get(0).cloned())) {
-            Ok(Some(dc)) => Ok(dc.clone()),
-            Ok(None) => Err(OrmoxError::Insert { error: String::from("No documents were inserted.") }),
-            Err(e) => Err(e)
-        }
-    }
-    async fn insert_many(&self, documents: Vec<&T>) -> OResult<Vec<Uuid>> {
-        self.insert_many(documents).await
-    }
-    async fn update_one(&self, query: impl QueryCompatible, update: impl Serialize + Send) -> OResult<()> {
-        self.update(query, update, OperationCount::One, false).await
-    }
-    async fn update_many(&self, query: impl QueryCompatible, update: impl Serialize + Send) -> OResult<()> {
-        self.update(query, update, OperationCount::Many, false).await
-    }
-    async fn replace_one(&self, query: impl QueryCompatible, document: impl Document) -> OResult<()> {
-        self.update(query, document, OperationCount::One, true).await
-    }
-    async fn replace_many(&self, query: impl QueryCompatible, document: impl Document) -> OResult<()> {
-        self.update(query, document, OperationCount::Many, true).await
-    }
-    async fn save(&self, document: impl Document) -> OResult<()> {
-        self.update(Query::new().equals(self.id_field(), document.id().to_string()).build(), document, OperationCount::One, true).await
-    }
-    async fn find_one(&self, query: impl QueryCompatible) -> OResult<Option<T>> {
-        match self.find(query, Find::one()).await {
-            Ok(results) => Ok(results.get(0).cloned()),
-            Err(e) => Err(e)
-        }
-    }
-}
+    /// Base function to insert document(s)
+    async fn insert(&self, collection: String, documents: Vec<bson::Document>) -> OResult<Vec<Uuid>>;
 
-#[async_trait]
-pub trait OrmoxDatabase: Send + Sync + Clone {
-    async fn collection<T: Document>(
-        &self,
-        name: impl AsRef<str>,
-    ) -> OResult<Arc<impl OrmoxCollection<T>>>;
+    /// Base function to update document(s)
+    async fn update(&self, collection: String, query: Query, update: bson::Document, count: OperationCount, upsert: bool) -> OResult<()>;
 
-    async fn collections(&self) -> Vec<String>;
-}
+    /// Base function to delete document(s)
+    async fn delete(&self, collection: String, query: Query, count: OperationCount) -> OResult<()>;
 
-pub trait OrmoxDriver {
-    type Database: OrmoxDatabase;
+    /// Base function to find document(s)
+    async fn find(&self, collection: String, query: Query, options: Find) -> OResult<Vec<bson::Document>>;
+
+    /// Base function to return all documents in a collection
+    async fn all(&self, collection: String, options: Find) -> OResult<Vec<bson::Document>>;
 }
