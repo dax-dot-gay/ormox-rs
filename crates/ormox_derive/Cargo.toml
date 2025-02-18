@@ -9,4 +9,6 @@ edition = "2021"
 [dependencies]
 darling = "0.20.10"
 quote = "1.0.38"
+serde = { version = "1.0.217", features = ["derive"] }
 syn = "2.0.98"
+ormox_core = { path = "../ormox_core" }

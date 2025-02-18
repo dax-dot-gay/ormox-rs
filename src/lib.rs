@@ -1,8 +1,10 @@
-use std::sync::{Arc, OnceLock};
-
-use client::Client;
-
-pub mod core;
-pub mod client;
-
-pub(crate) static ORMOX: OnceLock<Arc<Client>> = OnceLock::new();
+pub use ormox_core::{
+    client::{Client, Collection, self},
+    core::{
+        document::{Document, Index},
+        driver::{DatabaseDriver, Find, Sorting},
+        error::OrmoxError as Error,
+        query::{Query, QueryKey, QueryValue, SimpleQuery},
+        self
+    },
+};
