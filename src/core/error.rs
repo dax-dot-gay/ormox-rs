@@ -14,8 +14,8 @@ pub enum OrmoxError {
     #[error("Failed to insert document: {error:?}")]
     Insert {error: String},
 
-    #[error("Compatibility error.")]
-    Compatibility,
+    #[error("Compatibility error: {error:?}")]
+    Compatibility {error: String},
 
     #[error("Not found with query: {query:?}")]
     NotFound {query: String},

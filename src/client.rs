@@ -1,6 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
-
-use bson::Bson;
+use std::{error::Error, marker::PhantomData, sync::Arc};
 use serde::Serialize;
 
 use uuid::Uuid;
@@ -10,7 +8,7 @@ use crate::{
         document::Document,
         driver::{DatabaseDriver, Find, OperationCount},
         error::{OResult, OrmoxError},
-        query::{Query, QueryCompatible},
+        query::Query,
     },
     ORMOX,
 };
@@ -70,12 +68,12 @@ impl<T: Document> Collection<T> {
 
     pub async fn find(
         &self,
-        query: impl QueryCompatible,
+        query: impl TryInto<Query, Error = impl Error>,
         options: Option<Find>,
     ) -> OResult<Vec<T>> {
         let raw = self
             .driver()
-            .find(self.name(), query.into()?, options.unwrap_or(Find::many()))
+            .find(self.name(), query.try_into().or_else(|e| Err(OrmoxError::Compatibility { error: e.to_string() }))?, options.unwrap_or(Find::many()))
             .await?;
 
         let mut results: Vec<T> = Vec::new();
@@ -113,7 +111,7 @@ impl<T: Document> Collection<T> {
 
     pub async fn update(
         &self,
-        query: impl QueryCompatible,
+        query: impl TryInto<Query, Error = impl Error>,
         update: impl Serialize,
         operations: OperationCount,
         upsert: bool,
@@ -121,7 +119,7 @@ impl<T: Document> Collection<T> {
         self.driver()
             .update(
                 self.name(),
-                query.into()?,
+                query.try_into().or_else(|e| Err(OrmoxError::Compatibility { error: e.to_string() }))?,
                 bson::to_document(&update).or_else(|e| {
                     Err(OrmoxError::Deserialization {
                         error: e.to_string(),
@@ -135,36 +133,33 @@ impl<T: Document> Collection<T> {
 
     pub async fn delete(
         &self,
-        query: impl QueryCompatible,
+        query: impl TryInto<Query, Error = impl Error>,
         operations: OperationCount,
     ) -> OResult<()> {
         self.driver()
-            .delete(self.name(), query.into()?, operations)
+            .delete(self.name(), query.try_into().or_else(|e| Err(OrmoxError::Compatibility { error: e.to_string() }))?, operations)
             .await
     }
 
-    pub async fn find_one(&self, query: impl QueryCompatible) -> OResult<T> {
-        let _query = query.into()?;
+    pub async fn find_one(&self, query: impl TryInto<Query, Error = impl Error>) -> OResult<T> {
+        let _query: Query = query.try_into().or_else(|e| Err(OrmoxError::Compatibility { error: e.to_string() }))?;
         if let Some(result) = self.find(_query.clone(), Some(Find::one())).await?.get(0) {
             Ok(result.clone())
         } else {
             Err(OrmoxError::NotFound {
-                query: TryInto::<Bson>::try_into(_query)
-                    .and_then(|r| Ok(r.to_string()))
-                    .or::<()>(Ok(String::from("Unparseable query")))
-                    .unwrap(),
+                query: TryInto::<bson::Document>::try_into(_query).and_then(|d| Ok(d.to_string())).or::<()>(Ok(String::from("Unparseable query"))).unwrap(),
             })
         }
     }
 
-    pub async fn find_many(&self, query: impl QueryCompatible) -> OResult<Vec<T>> {
+    pub async fn find_many(&self, query: impl TryInto<Query, Error = impl Error>) -> OResult<Vec<T>> {
         self.find(query, Some(Find::many())).await
     }
 
     pub async fn get(&self, id: impl AsRef<str>) -> OResult<T> {
         self.find_one(
             Query::new()
-                .equals(self.driver().id_field(), id.as_ref().to_string())
+                .field(self.driver().id_field(), id.as_ref().to_string())
                 .build(),
         )
         .await
@@ -173,7 +168,7 @@ impl<T: Document> Collection<T> {
     pub async fn save(&self, document: T) -> OResult<()> {
         self.update(
             Query::new()
-                .equals(self.driver().id_field(), document.id().to_string())
+                .field(self.driver().id_field(), document.id().to_string())
                 .build(),
             document,
             OperationCount::One,
@@ -182,11 +177,11 @@ impl<T: Document> Collection<T> {
         .await
     }
 
-    pub async fn delete_one(&self, query: impl QueryCompatible) -> OResult<()> {
+    pub async fn delete_one(&self, query: impl TryInto<Query, Error = impl Error>) -> OResult<()> {
         self.delete(query, OperationCount::One).await
     }
 
-    pub async fn delete_many(&self, query: impl QueryCompatible) -> OResult<()> {
+    pub async fn delete_many(&self, query: impl TryInto<Query, Error = impl Error>) -> OResult<()> {
         self.delete(query, OperationCount::Many).await
     }
 }

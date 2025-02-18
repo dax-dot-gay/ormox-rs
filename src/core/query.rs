@@ -1,238 +1,403 @@
 use std::collections::HashMap;
 
-use bson::{bson, Bson};
+use bson::Bson;
 use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Number, Value};
 
 use super::error::{OResult, OrmoxError};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(tag = "operation", rename_all = "snake_case")]
-pub enum QueryOperator {
-    Equals { key: String, value: Value },
-    NotEquals { key: String, value: Value },
-    GreaterThan { key: String, value: Number },
-    LessThan { key: String, value: Number },
-    GreaterThanEqual { key: String, value: Number },
-    LessThanEqual { key: String, value: Number },
-    In { key: String, values: Vec<Value> },
-    NotIn { key: String, values: Vec<Value> },
-    Or { queries: Vec<Query> }
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub enum QueryKey {
+    String(String),
+    Operator(String),
+    GreaterThan,
+    LessThan,
+    GreaterThanEqual,
+    LessThanEqual,
+    Equals,
+    NotEquals,
+    In,
+    NotIn,
+    And,
+    Or,
+    Not,
 }
 
-impl QueryOperator {
-    pub fn key(&self) -> String {
+impl ToString for QueryKey {
+    fn to_string(&self) -> String {
         match self {
-            QueryOperator::Equals { key, .. } => key.clone(),
-            QueryOperator::NotEquals { key, .. } => key.clone(),
-            QueryOperator::GreaterThan { key, .. } => key.clone(),
-            QueryOperator::LessThan { key, .. } => key.clone(),
-            QueryOperator::GreaterThanEqual { key, .. } => key.clone(),
-            QueryOperator::LessThanEqual { key, .. } => key.clone(),
-            QueryOperator::In { key, .. } => key.clone(),
-            QueryOperator::NotIn { key, .. } => key.clone(),
-            QueryOperator::Or { .. } => String::from("$or")
+            Self::String(s) => s.clone(),
+            Self::Operator(o) => o.clone(),
+            Self::GreaterThan => "$gt".into(),
+            Self::LessThan => "$lt".into(),
+            Self::GreaterThanEqual => "$gte".into(),
+            Self::LessThanEqual => "$lte".into(),
+            Self::Equals => "$eq".into(),
+            Self::NotEquals => "$ne".into(),
+            Self::In => "$in".into(),
+            Self::NotIn => "$nin".into(),
+            Self::And => "$and".into(),
+            Self::Or => "$or".into(),
+            Self::Not => "$not".into(),
         }
     }
 }
 
-impl TryInto<Bson> for QueryOperator {
-    type Error = bson::ser::Error;
-    fn try_into(self) -> Result<Bson, Self::Error> {
-        match self {
-            QueryOperator::Equals { value, .. } => bson::to_bson(&value),
-            QueryOperator::NotEquals { value, .. } => {
-                bson::to_bson(&value).and_then(|v| Ok(bson!({"$ne": v})))
-            }
-            QueryOperator::GreaterThan { value, .. } => {
-                bson::to_bson(&value).and_then(|v| Ok(bson!({"$gt": v})))
-            }
-            QueryOperator::GreaterThanEqual { value, .. } => {
-                bson::to_bson(&value).and_then(|v| Ok(bson!({"$gte": v})))
-            }
-            QueryOperator::LessThan { value, .. } => {
-                bson::to_bson(&value).and_then(|v| Ok(bson!({"$lt": v})))
-            }
-            QueryOperator::LessThanEqual { value, .. } => {
-                bson::to_bson(&value).and_then(|v| Ok(bson!({"$lte": v})))
-            }
-            QueryOperator::In { values, .. } => {
-                bson::to_bson(&values).and_then(|v| Ok(bson!({"$in": v})))
-            }
-            QueryOperator::NotIn { values, .. } => {
-                bson::to_bson(&values).and_then(|v| Ok(bson!({"$nin": v})))
-            }
-            QueryOperator::Or { queries } => {
-                let mut result: Vec<Bson> = Vec::new();
-                for q in queries {
-                    result.push(TryInto::<Bson>::try_into(q)?);
-                }
-
-                Ok(Bson::Array(result))
-            }
-        }
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum QueryValue {
+    Value(Value),
+    Casematch(Vec<Query>),
+    Mapping(Query),
 }
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Query(HashMap<String, QueryOperator>);
 
-impl TryInto<Bson> for Query {
-    type Error = bson::ser::Error;
-    fn try_into(self) -> Result<Bson, Self::Error> {
-        let mut result = bson::Document::new();
-        for (key, value) in self.0 {
-            result.insert(key, TryInto::<Bson>::try_into(value)?);
-        }
-        Ok(Bson::Document(result))
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Query(HashMap<QueryKey, QueryValue>);
+
+impl From<&Query> for Query {
+    fn from(value: &Query) -> Self {
+        value.clone()
     }
 }
 
 impl Query {
-    fn push(&mut self, operator: QueryOperator) -> &mut Self {
-        self.0.insert(operator.key(), operator);
+    pub fn new() -> Self {
+        Query(HashMap::new())
+    }
+
+    fn push(&mut self, key: QueryKey, value: QueryValue) -> &mut Self {
+        let _ = self.0.insert(key.clone(), value.clone());
         self
     }
 
-    pub fn new() -> Self {
-        Self(HashMap::new())
+    pub fn field(&mut self, key: impl AsRef<str>, value: impl Into<Value>) -> &mut Self {
+        self.push(
+            QueryKey::String(key.as_ref().to_string()),
+            QueryValue::Value(value.into()),
+        )
     }
 
-    pub fn equals<K: AsRef<str>, V: Into<Value>>(&mut self, key: K, value: V) -> &mut Self {
-        self.push(QueryOperator::Equals {
-            key: key.as_ref().to_string(),
-            value: value.into(),
-        })
+    pub fn subquery(&mut self, key: impl AsRef<str>, child: impl Into<Query>) -> &mut Self {
+        self.push(
+            QueryKey::String(key.as_ref().to_string()),
+            QueryValue::Mapping(child.into()),
+        )
     }
 
-    pub fn not_equals<K: AsRef<str>, V: Into<Value>>(&mut self, key: K, value: V) -> &mut Self {
-        self.push(QueryOperator::NotEquals {
-            key: key.as_ref().to_string(),
-            value: value.into(),
-        })
+    pub fn operation(&mut self, operation: impl AsRef<str>, value: QueryValue) -> &mut Self {
+        self.push(
+            QueryKey::Operator(operation.as_ref().to_string()),
+            value.clone(),
+        )
     }
 
-    pub fn greater_than<K: AsRef<str>, V: Into<Number>>(&mut self, key: K, value: V) -> &mut Self {
-        self.push(QueryOperator::GreaterThan {
-            key: key.as_ref().to_string(),
-            value: value.into(),
-        })
+    pub fn greater_than(&mut self, value: impl Into<Number>) -> &mut Self {
+        self.push(
+            QueryKey::GreaterThan,
+            QueryValue::Value(Into::<Number>::into(value).into()),
+        )
     }
 
-    pub fn greater_than_equal<K: AsRef<str>, V: Into<Number>>(
-        &mut self,
-        key: K,
-        value: V,
-    ) -> &mut Self {
-        self.push(QueryOperator::GreaterThanEqual {
-            key: key.as_ref().to_string(),
-            value: value.into(),
-        })
+    pub fn greater_than_equal(&mut self, value: impl Into<Number>) -> &mut Self {
+        self.push(
+            QueryKey::GreaterThanEqual,
+            QueryValue::Value(Into::<Number>::into(value).into()),
+        )
     }
 
-    pub fn less_than<K: AsRef<str>, V: Into<Number>>(&mut self, key: K, value: V) -> &mut Self {
-        self.push(QueryOperator::LessThan {
-            key: key.as_ref().to_string(),
-            value: value.into(),
-        })
+    pub fn less_than(&mut self, value: impl Into<Number>) -> &mut Self {
+        self.push(
+            QueryKey::LessThan,
+            QueryValue::Value(Into::<Number>::into(value).into()),
+        )
     }
 
-    pub fn less_than_equal<K: AsRef<str>, V: Into<Number>>(
-        &mut self,
-        key: K,
-        value: V,
-    ) -> &mut Self {
-        self.push(QueryOperator::LessThanEqual {
-            key: key.as_ref().to_string(),
-            value: value.into(),
-        })
+    pub fn less_than_equal(&mut self, value: impl Into<Number>) -> &mut Self {
+        self.push(
+            QueryKey::LessThanEqual,
+            QueryValue::Value(Into::<Number>::into(value).into()),
+        )
     }
 
-    pub fn any_of<K: AsRef<str>, V: Into<Value>>(&mut self, key: K, value: Vec<V>) -> &mut Self {
-        self.push(QueryOperator::In {
-            key: key.as_ref().to_string(),
-            values: value.into_iter().map(|v| Into::<Value>::into(v)).collect(),
-        })
+    pub fn equals(&mut self, value: impl Into<Value>) -> &mut Self {
+        self.push(QueryKey::Equals, QueryValue::Value(value.into()))
     }
 
-    pub fn none_of<K: AsRef<str>, V: Into<Value>>(&mut self, key: K, value: Vec<V>) -> &mut Self {
-        self.push(QueryOperator::NotIn {
-            key: key.as_ref().to_string(),
-            values: value.into_iter().map(|v| Into::<Value>::into(v)).collect(),
-        })
+    pub fn not_equals(&mut self, value: impl Into<Value>) -> &mut Self {
+        self.push(QueryKey::NotEquals, QueryValue::Value(value.into()))
     }
 
-    pub fn or(&mut self, query: Query) -> &mut Self {
-        let mut current = if let QueryOperator::Or { queries } = self
-            .0
-            .get("$or")
-            .or(Some(&QueryOperator::Or {
-                queries: Vec::new(),
-            }))
-            .unwrap()
-            .clone()
-        {
-            queries
-        } else {
-            Vec::<Query>::new()
-        };
-
-        current.push(query);
-        self.push(QueryOperator::Or {
-            queries: current.clone(),
-        })
+    pub fn in_array(&mut self, value: impl IntoIterator<Item = impl Into<Value>>) -> &mut Self {
+        self.push(
+            QueryKey::In,
+            QueryValue::Value(Value::Array(
+                value
+                    .into_iter()
+                    .map(|v| Into::<Value>::into(v).clone())
+                    .collect::<Vec<Value>>(),
+            )),
+        )
     }
 
-    pub fn build(&mut self) -> Self {
+    pub fn not_in_array(&mut self, value: impl IntoIterator<Item = impl Into<Value>>) -> &mut Self {
+        self.push(
+            QueryKey::NotIn,
+            QueryValue::Value(Value::Array(
+                value
+                    .into_iter()
+                    .map(|v| Into::<Value>::into(v))
+                    .collect::<Vec<Value>>(),
+            )),
+        )
+    }
+
+    pub fn not(&mut self, value: impl Into<Query>) -> &mut Self {
+        self.push(QueryKey::Not, QueryValue::Mapping(value.into()))
+    }
+
+    pub fn and(&mut self, cases: impl IntoIterator<Item = impl Into<Query>>) -> &mut Self {
+        self.push(
+            QueryKey::And,
+            QueryValue::Casematch(
+                cases
+                    .into_iter()
+                    .map(|c| Into::<Query>::into(c))
+                    .collect::<Vec<Query>>(),
+            ),
+        )
+    }
+
+    pub fn or(&mut self, cases: impl IntoIterator<Item = impl Into<Query>>) -> &mut Self {
+        self.push(
+            QueryKey::Or,
+            QueryValue::Casematch(
+                cases
+                    .into_iter()
+                    .map(|c| Into::<Query>::into(c))
+                    .collect::<Vec<Query>>(),
+            ),
+        )
+    }
+
+    pub fn build(&self) -> Self {
         self.clone()
     }
 }
 
-pub trait QueryCompatible : TryInto<Query> + TryFrom<Query> + Send {
-    fn into(self) -> OResult<Query> {
-        match TryInto::<Query>::try_into(self) {
-            Ok(r) => Ok(r),
-            Err(_) => Err(OrmoxError::Compatibility )
-        }
-    }
-
-    fn from(query: Query) -> OResult<Self> {
-        match Self::try_from(query) {
-            Ok(r) => Ok(r),
-            Err(_) => Err(OrmoxError::Compatibility )
-        }
-    }
+fn bson_value(input: &Bson) -> OResult<Value> {
+    to_value(input).or_else(|e| {
+        Err(OrmoxError::Deserialization {
+            error: e.to_string(),
+        })
+    })
 }
 
-impl QueryCompatible for Query {}
+fn bson_value_array(input: &Bson) -> OResult<Vec<Value>> {
+    to_value(input)
+        .or_else(|e| {
+            Err(OrmoxError::Deserialization {
+                error: e.to_string(),
+            })
+        })?
+        .as_array()
+        .ok_or(OrmoxError::Deserialization {
+            error: String::from("Expected an array of values"),
+        })
+        .cloned()
+}
 
-impl TryInto<bson::Document> for Query {
-    type Error = bson::ser::Error;
-    fn try_into(self) -> Result<bson::Document, Self::Error> {
-        let bs = TryInto::<Bson>::try_into(self)?;
-        Ok(bs.as_document().expect("TryInto<Bson> should return a Document type, but did not.").clone())
+fn bson_number(input: &Bson) -> OResult<Number> {
+    bson_value(input)?
+        .as_number()
+        .ok_or(OrmoxError::Deserialization {
+            error: String::from("Invalid number"),
+        })
+        .cloned()
+}
+
+fn bson_query(input: &Bson) -> OResult<Query> {
+    TryFrom::<bson::Document>::try_from(
+        input
+            .as_document()
+            .ok_or(OrmoxError::Deserialization {
+                error: String::from("Expected a document"),
+            })?
+            .clone(),
+    )
+}
+
+fn bson_query_array(input: &Bson) -> OResult<Vec<Query>> {
+    let mut result: Vec<Query> = Vec::new();
+    for item in input.as_array().ok_or(OrmoxError::Deserialization {
+        error: String::from("Expected an array of values"),
+    })? {
+        result.push(bson_query(item)?);
     }
+    Ok(result)
 }
 
 impl TryFrom<bson::Document> for Query {
     type Error = OrmoxError;
     fn try_from(value: bson::Document) -> Result<Self, Self::Error> {
-        let mut query = Query::new();
-        for (key, item) in value {
-            if key == "$or" {
-                let doc_array = item.as_array().ok_or(OrmoxError::Deserialization { error: String::from("Value of $or key was not an array.") })?;
-                for case in doc_array {
-                    let case_doc = case.as_document().ok_or(OrmoxError::Deserialization { error: String::from("A case within an $or clause was not a document.") })?.clone();
-                    query.or(Query::try_from(case_doc)?);
-                }
+        let mut result = Query::new();
+        for (key, value) in value {
+            if key.starts_with("$") {
+                match key.as_str() {
+                    "$gt" => result.greater_than(bson_number(&value)?),
+                    "$lt" => result.less_than(bson_number(&value)?),
+                    "$gte" => result.greater_than_equal(bson_number(&value)?),
+                    "$lte" => result.less_than_equal(bson_number(&value)?),
+                    "$eq" => result.equals(bson_value(&value)?),
+                    "$ne" => result.not_equals(bson_value(&value)?),
+                    "$in" => result.in_array(bson_value_array(&value)?),
+                    "$nin" => result.not_in_array(bson_value_array(&value)?),
+                    "$not" => result.not(bson_query(&value)?),
+                    "$and" => result.and(bson_query_array(&value)?),
+                    "$or" => result.or(bson_query_array(&value)?),
+                    op => result.operation(
+                        op,
+                        if let Bson::Document(subdoc) = value {
+                            QueryValue::Mapping(TryFrom::<bson::Document>::try_from(subdoc)?)
+                        } else if let Ok(queries) = bson_query_array(&value) {
+                            QueryValue::Casematch(queries)
+                        } else {
+                            QueryValue::Value(bson_value(&value)?)
+                        },
+                    ),
+                };
             } else {
-                if let Some(subdoc) = item.as_document() {
-
+                if let Bson::Document(subdoc) = value {
+                    result.subquery(key, Query::try_from(subdoc)?);
                 } else {
-                    query.equals(key, to_value(item.clone()).or_else(|e| Err(OrmoxError::Deserialization { error: e.to_string() }))?);
+                    result.field(key, bson_value(&value)?);
                 }
             }
         }
 
-        Ok(query.build())
+        Ok(result)
+    }
+}
+
+impl TryInto<bson::Document> for Query {
+    type Error = OrmoxError;
+    fn try_into(self) -> Result<bson::Document, Self::Error> {
+        let mut result = bson::Document::new();
+
+        for (key, value) in self.0 {
+            match value {
+                QueryValue::Value(v) => result.insert(
+                    key.to_string(),
+                    Bson::try_from(v).or_else(|e| {
+                        Err(OrmoxError::Deserialization {
+                            error: e.to_string(),
+                        })
+                    })?,
+                ),
+                QueryValue::Casematch(queries) => {
+                    let mut cases: Vec<Bson> = Vec::new();
+                    for q in queries {
+                        cases.push(Bson::Document(q.try_into()?));
+                    }
+
+                    result.insert(key.to_string(), Bson::Array(cases))
+                }
+                QueryValue::Mapping(query) => {
+                    result.insert(key.to_string(), Bson::Document(query.try_into()?))
+                }
+            };
+        }
+
+        Ok(result)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SimpleQuery(Query);
+
+impl SimpleQuery {
+    pub fn new() -> Self {
+        Self(Query::new())
+    }
+
+    fn q(&mut self) -> &mut Query {
+        &mut self.0
+    }
+
+    pub fn equals(&mut self, key: impl AsRef<str>, value: impl Into<Value>) -> &mut Self {
+        self.q().field(key, value);
+        self
+    }
+
+    pub fn not_equals(&mut self, key: impl AsRef<str>, value: impl Into<Value>) -> &mut Self {
+        self.q()
+            .subquery(key, Query::new().not_equals(value).build());
+        self
+    }
+
+    pub fn less_than(&mut self, key: impl AsRef<str>, value: impl Into<Number>) -> &mut Self {
+        self.q()
+            .subquery(key, Query::new().less_than(value).build());
+        self
+    }
+
+    pub fn less_than_equal(&mut self, key: impl AsRef<str>, value: impl Into<Number>) -> &mut Self {
+        self.q()
+            .subquery(key, Query::new().less_than_equal(value).build());
+        self
+    }
+
+    pub fn greater_than(&mut self, key: impl AsRef<str>, value: impl Into<Number>) -> &mut Self {
+        self.q()
+            .subquery(key, Query::new().greater_than(value).build());
+        self
+    }
+
+    pub fn greater_than_equal(
+        &mut self,
+        key: impl AsRef<str>,
+        value: impl Into<Number>,
+    ) -> &mut Self {
+        self.q()
+            .subquery(key, Query::new().greater_than_equal(value).build());
+        self
+    }
+
+    pub fn in_array(
+        &mut self,
+        key: impl AsRef<str>,
+        value: impl IntoIterator<Item = impl Into<Value>>,
+    ) -> &mut Self {
+        self.q().subquery(key, Query::new().in_array(value).build());
+        self
+    }
+
+    pub fn not_in_array(
+        &mut self,
+        key: impl AsRef<str>,
+        value: impl IntoIterator<Item = impl Into<Value>>,
+    ) -> &mut Self {
+        self.q()
+            .subquery(key, Query::new().not_in_array(value).build());
+        self
+    }
+
+    pub fn not(&mut self, key: impl AsRef<str>, expr: impl Into<Query>) -> &mut Self {
+        self.q().subquery(key, Query::new().not(expr).build());
+        self
+    }
+
+    pub fn build(&self) -> Query {
+        self.0.clone().build()
+    }
+}
+
+impl From<Query> for SimpleQuery {
+    fn from(value: Query) -> Self {
+        Self(value)
+    }
+}
+
+impl From<SimpleQuery> for Query {
+    fn from(value: SimpleQuery) -> Self {
+        value.0
     }
 }

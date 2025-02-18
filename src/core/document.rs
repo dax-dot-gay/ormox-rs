@@ -95,7 +95,7 @@ pub trait Document: Serialize + DeserializeOwned + Clone + Debug + Sync + Send {
 
     async fn delete(self) -> OResult<()> {
         if let Some(collection) = self.collection() {
-            collection.delete_one(Query::new().equals(collection.driver().id_field(), self.id().to_string()).build()).await
+            collection.delete_one(Query::new().field(collection.driver().id_field(), self.id().to_string()).build()).await
         } else {
             Err(OrmoxError::Uninitialized)
         }
