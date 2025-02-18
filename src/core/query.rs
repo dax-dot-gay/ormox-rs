@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bson::{bson, Bson};
 use serde::{Deserialize, Serialize};
-use serde_json::{Number, Value};
+use serde_json::{to_value, Number, Value};
 
 use super::error::{OResult, OrmoxError};
 
@@ -17,7 +17,7 @@ pub enum QueryOperator {
     LessThanEqual { key: String, value: Number },
     In { key: String, values: Vec<Value> },
     NotIn { key: String, values: Vec<Value> },
-    Or { queries: Vec<Query> },
+    Or { queries: Vec<Query> }
 }
 
 impl QueryOperator {
@@ -31,7 +31,7 @@ impl QueryOperator {
             QueryOperator::LessThanEqual { key, .. } => key.clone(),
             QueryOperator::In { key, .. } => key.clone(),
             QueryOperator::NotIn { key, .. } => key.clone(),
-            QueryOperator::Or { .. } => String::from("$or"),
+            QueryOperator::Or { .. } => String::from("$or")
         }
     }
 }
@@ -73,7 +73,6 @@ impl TryInto<Bson> for QueryOperator {
         }
     }
 }
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Query(HashMap<String, QueryOperator>);
 
@@ -205,3 +204,35 @@ pub trait QueryCompatible : TryInto<Query> + TryFrom<Query> + Send {
 }
 
 impl QueryCompatible for Query {}
+
+impl TryInto<bson::Document> for Query {
+    type Error = bson::ser::Error;
+    fn try_into(self) -> Result<bson::Document, Self::Error> {
+        let bs = TryInto::<Bson>::try_into(self)?;
+        Ok(bs.as_document().expect("TryInto<Bson> should return a Document type, but did not.").clone())
+    }
+}
+
+impl TryFrom<bson::Document> for Query {
+    type Error = OrmoxError;
+    fn try_from(value: bson::Document) -> Result<Self, Self::Error> {
+        let mut query = Query::new();
+        for (key, item) in value {
+            if key == "$or" {
+                let doc_array = item.as_array().ok_or(OrmoxError::Deserialization { error: String::from("Value of $or key was not an array.") })?;
+                for case in doc_array {
+                    let case_doc = case.as_document().ok_or(OrmoxError::Deserialization { error: String::from("A case within an $or clause was not a document.") })?.clone();
+                    query.or(Query::try_from(case_doc)?);
+                }
+            } else {
+                if let Some(subdoc) = item.as_document() {
+
+                } else {
+                    query.equals(key, to_value(item.clone()).or_else(|e| Err(OrmoxError::Deserialization { error: e.to_string() }))?);
+                }
+            }
+        }
+
+        Ok(query.build())
+    }
+}
