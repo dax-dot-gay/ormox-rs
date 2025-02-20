@@ -3,7 +3,7 @@ use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{error::OResult, query::Query};
+use super::{document::Index, error::{OResult, OrmoxError}, query::Query};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum OperationCount {
@@ -62,6 +62,7 @@ impl Find {
     }
 }
 
+#[allow(unused_variables)]
 #[async_trait]
 pub trait DatabaseDriver {
     // Metadata functions
@@ -86,4 +87,14 @@ pub trait DatabaseDriver {
 
     /// Base function to return all documents in a collection
     async fn all(&self, collection: String, options: Find) -> OResult<Vec<bson::Document>>;
+
+    /// Base function to create an index
+    async fn create_index(&self, collection: String, index: Index) -> OResult<()> {
+        Err(OrmoxError::Unimplemented)
+    }
+
+    /// Base function to drop an index
+    async fn drop_index(&self, collection: String, name: String) -> OResult<()> {
+        Err(OrmoxError::Unimplemented)
+    }
 }

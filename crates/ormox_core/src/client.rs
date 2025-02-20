@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     core::{
-        document::Document,
+        document::{Document, Index},
         driver::{DatabaseDriver, Find, OperationCount},
         error::{OResult, OrmoxError},
         query::Query,
@@ -183,5 +183,13 @@ impl<T: Document> Collection<T> {
 
     pub async fn delete_many(&self, query: impl TryInto<Query, Error = impl Error>) -> OResult<()> {
         self.delete(query, OperationCount::Many).await
+    }
+
+    pub async fn create_index(&self, index: Index) -> OResult<()> {
+        self.driver().create_index(self.name(), index).await
+    }
+
+    pub async fn drop_index(&self, index_name: impl AsRef<str>) -> OResult<()> {
+        self.driver().drop_index(self.name(), index_name.as_ref().to_string()).await
     }
 }

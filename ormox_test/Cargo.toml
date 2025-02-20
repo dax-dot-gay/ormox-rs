@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ormox = { path = "../", features = ["derive", "default"] }
+ormox = { path = "../crates/ormox", features = ["derive", "default"] }
 serde = { version = "1.0.218", features = ["derive"] }

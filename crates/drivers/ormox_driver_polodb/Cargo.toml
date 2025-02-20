@@ -1,0 +1,6 @@
+[package]
+name = "ormox_driver_polodb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]

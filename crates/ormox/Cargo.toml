@@ -1,0 +1,12 @@
+[package]
+name = "ormox"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ormox_core = { path = "../ormox_core" }
+ormox_derive = { path = "../ormox_derive", optional = true }
+
+[features]
+default = ["derive"]
+derive = ["dep:ormox_derive"]

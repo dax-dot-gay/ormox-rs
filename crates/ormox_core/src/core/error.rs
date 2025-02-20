@@ -24,7 +24,10 @@ pub enum OrmoxError {
     Id {provided: String},
 
     #[error("Document is uninitialized")]
-    Uninitialized
+    Uninitialized,
+
+    #[error("Method is not implemented on this driver")]
+    Unimplemented
 }
 
 pub type OResult<T> = Result<T, OrmoxError>;
