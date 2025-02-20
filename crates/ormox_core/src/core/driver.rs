@@ -68,9 +68,6 @@ pub trait DatabaseDriver {
     /// Name of this driver (ie "mongodb")
     fn driver_name(&self) -> String;
 
-    /// Field that the database stores object IDs in (ie "_id")
-    fn id_field(&self) -> String;
-
     // Operation functions
     /// Function to return all collection names
     async fn collections(&self) -> OResult<Vec<String>>;

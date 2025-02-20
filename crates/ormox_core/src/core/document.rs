@@ -68,13 +68,20 @@ impl Index {
 }
 
 #[async_trait::async_trait]
-pub trait Document: Serialize + DeserializeOwned + Clone + Debug + Sync + Send {
+pub trait Document: Serialize + DeserializeOwned + Clone + Sync + Send {
     fn id(&self) -> Uuid;
+    fn id_field() -> String;
     fn collection_name() -> String;
     fn indexes() -> Vec<Index>;
-    fn parse(data: bson::Document, collection: Option<Collection<Self>>) -> OResult<Self>;
     fn attached_collection(&self) -> Option<Collection<Self>>;
-    fn attach_collection(&self, collection: Collection<Self>) -> ();
+    fn attach_collection(&mut self, collection: Collection<Self>) -> ();
+    fn parse(data: bson::Document, collection: Option<Collection<Self>>) -> OResult<Self> {
+        let mut parsed = bson::from_document::<Self>(data.clone()).or_else(|e| Err(OrmoxError::Deserialization { error: e.to_string() }))?;
+        if let Some(coll) = collection {
+            parsed.attach_collection(coll);
+        }
+        Ok(parsed)
+    }
     fn collection(&self) -> Option<Collection<Self>> {
         if let Some(attached) = self.attached_collection() {
             Some(attached)
@@ -95,7 +102,7 @@ pub trait Document: Serialize + DeserializeOwned + Clone + Debug + Sync + Send {
 
     async fn delete(self) -> OResult<()> {
         if let Some(collection) = self.collection() {
-            collection.delete_one(Query::new().field(collection.driver().id_field(), self.id().to_string()).build()).await
+            collection.delete_one(Query::new().field(Self::id_field(), self.id().to_string()).build()).await
         } else {
             Err(OrmoxError::Uninitialized)
         }

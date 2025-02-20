@@ -1,0 +1,8 @@
+[package]
+name = "ormox_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ormox = { path = "../", features = ["derive", "default"] }
+serde = { version = "1.0.218", features = ["derive"] }

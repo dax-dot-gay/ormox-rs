@@ -8,3 +8,8 @@ pub use ormox_core::{
         self
     },
 };
+
+pub use ormox_core;
+
+#[cfg(feature = "derive")]
+pub use ormox_derive::{ormox_document, Document};

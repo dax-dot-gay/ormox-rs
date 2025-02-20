@@ -159,7 +159,7 @@ impl<T: Document> Collection<T> {
     pub async fn get(&self, id: impl AsRef<str>) -> OResult<T> {
         self.find_one(
             Query::new()
-                .field(self.driver().id_field(), id.as_ref().to_string())
+                .field(T::id_field(), id.as_ref().to_string())
                 .build(),
         )
         .await
@@ -168,7 +168,7 @@ impl<T: Document> Collection<T> {
     pub async fn save(&self, document: T) -> OResult<()> {
         self.update(
             Query::new()
-                .field(self.driver().id_field(), document.id().to_string())
+                .field(T::id_field(), document.id().to_string())
                 .build(),
             document,
             OperationCount::One,

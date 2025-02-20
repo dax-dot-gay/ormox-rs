@@ -2,6 +2,7 @@
   "rust-analyzer.linkedProjects": [
     "crates/ormox_derive/Cargo.toml",
     "crates/ormox_core/Cargo.toml",
+    "ormox_test/Cargo.toml",
     "Cargo.toml"
   ]
 }

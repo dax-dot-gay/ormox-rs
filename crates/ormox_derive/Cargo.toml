@@ -12,3 +12,4 @@ quote = "1.0.38"
 serde = { version = "1.0.217", features = ["derive"] }
 syn = "2.0.98"
 ormox_core = { path = "../ormox_core" }
+proc-macro2 = { version = "1.0.93", features = ["span-locations"] }
