@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
@@ -27,7 +29,40 @@ pub enum OrmoxError {
     Uninitialized,
 
     #[error("Method is not implemented on this driver")]
-    Unimplemented
+    Unimplemented,
+
+    #[error("Driver-specific error: {driver_name}: {error:?}")]
+    Driver {driver_name: String, error: String}
+}
+
+impl OrmoxError {
+    pub fn serialization(error: impl Display) -> Self {
+        Self::Serialization { error: error.to_string() }
+    }
+
+    pub fn deserialization(error: impl Display) -> Self {
+        Self::Deserialization { error: error.to_string() }
+    }
+
+    pub fn insert(error: impl Display) -> Self {
+        Self::Insert { error: error.to_string() }
+    }
+
+    pub fn compaibility(error: impl Display) -> Self {
+        Self::Compatibility { error: error.to_string() }
+    }
+
+    pub fn not_found(query: impl AsRef<str>) -> Self {
+        Self::NotFound { query: query.as_ref().to_string() }
+    }
+
+    pub fn id(id: impl AsRef<str>) -> Self {
+        Self::Id { provided: id.as_ref().to_string() }
+    }
+
+    pub fn driver(driver: impl AsRef<str>, error: impl std::error::Error) -> Self {
+        Self::Driver { driver_name: driver.as_ref().to_string(), error: error.to_string() }
+    }
 }
 
 pub type OResult<T> = Result<T, OrmoxError>;
