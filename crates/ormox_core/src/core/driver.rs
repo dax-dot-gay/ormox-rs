@@ -77,7 +77,7 @@ pub trait DatabaseDriver {
     async fn insert(&self, collection: String, documents: Vec<bson::Document>) -> OResult<Vec<Uuid>>;
 
     /// Base function to update document(s)
-    async fn update(&self, collection: String, query: Query, update: bson::Document, count: OperationCount, upsert: bool) -> OResult<()>;
+    async fn update(&self, collection: String, query: Query, update: bson::Document, count: OperationCount) -> OResult<()>;
 
     /// Base function to delete document(s)
     async fn delete(&self, collection: String, query: Query, count: OperationCount) -> OResult<()>;
@@ -87,6 +87,9 @@ pub trait DatabaseDriver {
 
     /// Base function to return all documents in a collection
     async fn all(&self, collection: String, options: Find) -> OResult<Vec<bson::Document>>;
+
+    /// Base function to upsert document(s)
+    async fn upsert(&self, collection: String, query: Query, document: bson::Document, count: OperationCount) -> OResult<()>;
 
     /// Base function to create an index
     async fn create_index(&self, collection: String, index: Index) -> OResult<()> {

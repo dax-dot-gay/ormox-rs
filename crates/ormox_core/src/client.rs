@@ -66,6 +66,13 @@ impl<T: Document> Collection<T> {
         T::collection_name().clone()
     }
 
+    pub async fn register_indices(&self) -> OResult<()> {
+        for index in T::indexes() {
+            self.create_index(index).await?;
+        }
+        Ok(())
+    }
+
     pub async fn find(
         &self,
         query: impl TryInto<Query, Error = impl Error>,
@@ -114,7 +121,6 @@ impl<T: Document> Collection<T> {
         query: impl TryInto<Query, Error = impl Error>,
         update: impl Serialize,
         operations: OperationCount,
-        upsert: bool,
     ) -> OResult<()> {
         self.driver()
             .update(
@@ -125,8 +131,27 @@ impl<T: Document> Collection<T> {
                         error: e.to_string(),
                     })
                 })?,
-                operations,
-                upsert,
+                operations
+            )
+            .await
+    }
+
+    pub async fn upsert(
+        &self,
+        query: impl TryInto<Query, Error = impl Error>,
+        update: impl Serialize,
+        operations: OperationCount,
+    ) -> OResult<()> {
+        self.driver()
+            .upsert(
+                self.name(),
+                query.try_into().or_else(|e| Err(OrmoxError::Compatibility { error: e.to_string() }))?,
+                bson::to_document(&update).or_else(|e| {
+                    Err(OrmoxError::Deserialization {
+                        error: e.to_string(),
+                    })
+                })?,
+                operations
             )
             .await
     }
@@ -166,13 +191,12 @@ impl<T: Document> Collection<T> {
     }
 
     pub async fn save(&self, document: T) -> OResult<()> {
-        self.update(
+        self.upsert(
             Query::new()
                 .field(T::id_field(), document.id().to_string())
                 .build(),
             document,
-            OperationCount::One,
-            true,
+            OperationCount::One
         )
         .await
     }

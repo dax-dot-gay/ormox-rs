@@ -2,11 +2,11 @@ use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 use ormox_core::bson::doc;
-use ormox_core::{bson, Find, Sorting};
 use ormox_core::core::driver::OperationCount;
+use ormox_core::{bson, Find, Sorting};
 use ormox_core::{DatabaseDriver, OResult, OrmoxError, Query};
 use polodb_core::options::UpdateOptions;
-use polodb_core::{Collection, CollectionT, Database};
+use polodb_core::{Collection, CollectionT, Database, IndexModel, IndexOptions};
 use uuid::Uuid;
 
 #[allow(dead_code)]
@@ -24,6 +24,11 @@ pub struct PoloDriver(Arc<Database>);
 impl PoloDriver {
     fn collection(&self, name: String) -> Collection<bson::Document> {
         self.0.collection(&name)
+    }
+
+    pub fn new(database_path: impl AsRef<str>) -> OResult<Self> {
+        let db = wrap(Database::open_path(database_path.as_ref().to_string()))?;
+        Ok(Self(Arc::new(db)))
     }
 }
 
@@ -56,19 +61,16 @@ impl DatabaseDriver for PoloDriver {
         collection: String,
         query: Query,
         update: bson::Document,
-        count: OperationCount,
-        upsert: bool,
+        count: OperationCount
     ) -> OResult<()> {
         wrap(match count {
-            OperationCount::One => self.collection(collection).update_one_with_options(
+            OperationCount::One => self.collection(collection).update_one(
                 wrap(query.try_into())?,
-                update,
-                UpdateOptions::builder().upsert(upsert).build(),
+                update
             ),
-            OperationCount::Many => self.collection(collection).update_many_with_options(
+            OperationCount::Many => self.collection(collection).update_many(
                 wrap(query.try_into())?,
-                update,
-                UpdateOptions::builder().upsert(upsert).build(),
+                update
             ),
         })?;
         Ok(())
@@ -86,16 +88,24 @@ impl DatabaseDriver for PoloDriver {
         Ok(())
     }
 
-    async fn find(&self, collection: String, query: Query, options: Find) -> OResult<Vec<bson::Document>> {
+    async fn find(
+        &self,
+        collection: String,
+        query: Query,
+        options: Find,
+    ) -> OResult<Vec<bson::Document>> {
         let cl = self.collection(collection);
         let results = match options.operation {
-            OperationCount::One => wrap(cl.find_one(wrap(query.try_into())?))?.and_then(|d| Some(vec![d])).or(Some(Vec::<bson::Document>::new())).unwrap(),
+            OperationCount::One => wrap(cl.find_one(wrap(query.try_into())?))?
+                .and_then(|d| Some(vec![d]))
+                .or(Some(Vec::<bson::Document>::new()))
+                .unwrap(),
             OperationCount::Many => {
                 let mut find = cl.find(wrap(query.try_into())?);
                 if let Some(sort) = options.sort {
                     find = find.sort(match sort {
                         Sorting::Ascending(field) => doc! {field: 1},
-                        Sorting::Descending(field) => doc! {field: -1}
+                        Sorting::Descending(field) => doc! {field: -1},
                     });
                 }
 
@@ -107,7 +117,10 @@ impl DatabaseDriver for PoloDriver {
                     find = find.limit(limit.try_into().unwrap());
                 }
 
-                wrap(find.run())?.filter(|r| r.is_ok()).map(|r| r.unwrap()).collect()
+                wrap(find.run())?
+                    .filter(|r| r.is_ok())
+                    .map(|r| r.unwrap())
+                    .collect()
             }
         };
 
@@ -120,7 +133,7 @@ impl DatabaseDriver for PoloDriver {
         if let Some(sort) = options.sort {
             find = find.sort(match sort {
                 Sorting::Ascending(field) => doc! {field: 1},
-                Sorting::Descending(field) => doc! {field: -1}
+                Sorting::Descending(field) => doc! {field: -1},
             });
         }
 
@@ -132,6 +145,49 @@ impl DatabaseDriver for PoloDriver {
             find = find.limit(limit.try_into().unwrap());
         }
 
-        Ok(wrap(find.run())?.filter(|r| r.is_ok()).map(|r| r.unwrap()).collect())
+        Ok(wrap(find.run())?
+            .filter(|r| r.is_ok())
+            .map(|r| r.unwrap())
+            .collect())
+    }
+
+    async fn create_index(&self, collection: String, index: ormox_core::Index) -> OResult<()> {
+        let mut keys: bson::Document = bson::Document::new();
+        for key in index.fields {
+            keys.insert(key, 1);
+        }
+        wrap(self.collection(collection).create_index(IndexModel {
+            keys,
+            options: Some(IndexOptions {
+                name: index.name,
+                unique: if index.unique { Some(true) } else { None },
+            }),
+        }))
+    }
+
+    async fn drop_index(&self, collection: String, name: String) -> OResult<()> {
+        wrap(self.collection(collection).drop_index(name))
+    }
+
+    async fn upsert(
+        &self,
+        collection: String,
+        query: Query,
+        document: bson::Document,
+        count: OperationCount
+    ) -> OResult<()> {
+        wrap(match count {
+            OperationCount::One => self.collection(collection).update_one_with_options(
+                wrap(query.try_into())?,
+                doc! {"$set": document},
+                UpdateOptions::builder().upsert(true).build()
+            ),
+            OperationCount::Many => self.collection(collection).update_many_with_options(
+                wrap(query.try_into())?,
+                doc! {"$set": document},
+                UpdateOptions::builder().upsert(true).build()
+            ),
+        })?;
+        Ok(())
     }
 }

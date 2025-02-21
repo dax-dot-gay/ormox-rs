@@ -13,3 +13,8 @@ pub use ormox_core;
 
 #[cfg(feature = "derive")]
 pub use ormox_derive::{ormox_document, Document};
+
+pub mod drivers {
+    #[cfg(feature = "polodb")]
+    pub use ormox_driver_polodb::PoloDriver;
+}
