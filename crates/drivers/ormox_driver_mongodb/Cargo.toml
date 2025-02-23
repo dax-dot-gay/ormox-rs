@@ -1,0 +1,13 @@
+[package]
+name = "ormox_driver_mongodb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mongodb = "3.2.1"
+serde = { version = "1.0.218", features = ["derive"] }
+uuid = { version = "1.13.2", features = ["v4", "fast-rng", "serde"] }
+ormox_core = { path = "../../ormox_core" }
+thiserror = "2.0.11"
+async-trait = "0.1.86"
+futures = "0.3.31"

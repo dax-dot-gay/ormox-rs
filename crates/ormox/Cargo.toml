@@ -7,8 +7,10 @@ edition = "2021"
 ormox_core = { path = "../ormox_core" }
 ormox_derive = { path = "../ormox_derive", optional = true }
 ormox_driver_polodb = {path = "../drivers/ormox_driver_polodb", optional = true}
+ormox_driver_mongodb = {path = "../drivers/ormox_driver_mongodb", optional = true}
 
 [features]
 default = ["derive"]
 derive = ["dep:ormox_derive"]
 polodb = ["dep:ormox_driver_polodb"]
+mongodb = ["dep:ormox_driver_mongodb"]

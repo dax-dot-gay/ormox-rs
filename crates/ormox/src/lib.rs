@@ -17,4 +17,7 @@ pub use ormox_derive::{ormox_document, Document};
 pub mod drivers {
     #[cfg(feature = "polodb")]
     pub use ormox_driver_polodb::PoloDriver;
+
+    #[cfg(feature = "mongodb")]
+    pub use ormox_driver_mongodb::MongoDriver;
 }

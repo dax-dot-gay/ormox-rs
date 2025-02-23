@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["crates/ormox", "crates/ormox_core", "crates/ormox_derive", "crates/drivers/ormox_driver_polodb", "ormox_test"]
+members = ["crates/ormox", "crates/ormox_core", "crates/ormox_derive", "crates/drivers/ormox_driver_polodb", "ormox_test", "crates/drivers/ormox_driver_mongodb"]
